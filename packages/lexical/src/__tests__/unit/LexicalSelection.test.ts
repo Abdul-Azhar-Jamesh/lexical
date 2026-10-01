@@ -80,6 +80,27 @@ const selectionTestExtension = defineExtension({
   nodes: [TestDecoratorNode, TestInlineElementNode, TestShadowRootNode],
 });
 
+class NoNormalizeInlineElementNode extends ElementNode {
+  $config() {
+    return this.config('test_no_normalize_inline', {extends: ElementNode});
+  }
+  createDOM() {
+    return document.createElement('span');
+  }
+  updateDOM() {
+    return false;
+  }
+  isInline() {
+    return true;
+  }
+  canBeEmpty() {
+    return false;
+  }
+  canNormalizeSelectionInto() {
+    return false;
+  }
+}
+
 function mapLatest<T extends LexicalNode>(nodes: T[]): T[] {
   return nodes.map(node => node.getLatest());
 }
@@ -2669,6 +2690,87 @@ describe('Regression #7551 - Selection boundary normalization for single-child i
         assert($isTextNode(anchorNode));
         expect(anchorNode.getTextContent()).toBe(' world');
         expect(anchor.offset).toBe(0);
+      },
+      {discrete: true},
+    );
+  });
+
+  test('does not normalize selection points into an inline element that opts out', async () => {
+    const container = document.createElement('div');
+    container.contentEditable = 'true';
+    document.body.appendChild(container);
+    onTestFinished(() => container.remove());
+    using editor = buildEditorFromExtensions(
+      defineExtension({
+        dependencies: [selectionTestExtension],
+        name: '@test/no-normalize-selection',
+        nodes: [NoNormalizeInlineElementNode],
+      }),
+    );
+    editor.setRootElement(container);
+    let beforeKey: string;
+    let inlineTextKey: string;
+    let afterKey: string;
+
+    await editor.update(() => {
+      const paragraph = $createParagraphNode();
+      const before = $createTextNode('ab ');
+      const inlineText = $createTextNode('cd');
+      const inline = new NoNormalizeInlineElementNode().append(inlineText);
+      const after = $createTextNode(' ef');
+      paragraph.append(before, inline, after);
+      $getRoot().clear().append(paragraph);
+      beforeKey = before.__key;
+      inlineTextKey = inlineText.__key;
+      afterKey = after.__key;
+    });
+
+    const setDOMSelection = (
+      startKey: string,
+      startOffset: number,
+      endKey: string,
+      endOffset: number,
+    ) => {
+      const domSelection = getDOMSelection(editor._window ?? window);
+      const range = document.createRange();
+      range.setStart(
+        editor.getElementByKey(startKey)!.firstChild!,
+        startOffset,
+      );
+      range.setEnd(editor.getElementByKey(endKey)!.firstChild!, endOffset);
+      domSelection?.removeAllRanges();
+      domSelection?.addRange(range);
+      return domSelection;
+    };
+
+    editor.update(
+      () => {
+        const selection = $internalCreateRangeSelection(
+          $getSelection(),
+          setDOMSelection(beforeKey, 3, inlineTextKey, 1),
+          editor,
+          {type: 'selectionchange'} as Event,
+        );
+        assert(selection !== null);
+        expect(selection.anchor.key).toBe(beforeKey);
+        expect(selection.anchor.type).toBe('text');
+        expect(selection.anchor.offset).toBe(3);
+      },
+      {discrete: true},
+    );
+
+    editor.update(
+      () => {
+        const selection = $internalCreateRangeSelection(
+          $getSelection(),
+          setDOMSelection(inlineTextKey, 1, afterKey, 0),
+          editor,
+          {type: 'selectionchange'} as Event,
+        );
+        assert(selection !== null);
+        expect(selection.focus.key).toBe(afterKey);
+        expect(selection.focus.type).toBe('text');
+        expect(selection.focus.offset).toBe(0);
       },
       {discrete: true},
     );

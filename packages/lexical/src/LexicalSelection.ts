@@ -3122,6 +3122,7 @@ function $resolveSelectionPointOnBoundary(
     before !== isBackward &&
     $isElementNode(sibling) &&
     sibling.isInline() &&
+    sibling.canNormalizeSelectionInto() &&
     (!before || !isCollapsed)
   ) {
     point.set(sibling.__key, before ? sibling.getChildrenSize() : 0, 'element');

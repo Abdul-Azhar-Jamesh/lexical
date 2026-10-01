@@ -1042,6 +1042,13 @@ export class ElementNode
   canInsertTextAfter(): boolean {
     return true;
   }
+  /**
+   * Controls whether selection points at adjacent text-node boundaries may
+   * be normalized into this inline element when read from the DOM.
+   */
+  canNormalizeSelectionInto(): boolean {
+    return true;
+  }
 
   /**
    * If the method is overridden and returns true, ensure that `canBeEmpty()`
